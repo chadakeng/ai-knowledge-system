@@ -1,6 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
+from starlette.concurrency import run_in_threadpool
 import pdfplumber
-import shutil
 import os
 
 router = APIRouter()
@@ -11,21 +11,27 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 @router.post("/upload")
 async def upload_document(file: UploadFile = File(...)):
 
-    # check it's actually a PDF
     if not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are accepted")
 
-    # save the file to disk
     file_path = os.path.join(UPLOAD_DIR, file.filename)
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    contents = await file.read()
 
-    # verify it's a readable PDF
-    try:
+    MAX_SIZE = 10 * 1024 * 1024  # 10MB
+    if len(contents) > MAX_SIZE:
+        raise HTTPException(status_code=400, detail="File too large")
+
+    def save_and_validate():
+        with open(file_path, "wb") as buffer:
+            buffer.write(contents)
         with pdfplumber.open(file_path) as pdf:
-            page_count = len(pdf.pages)
+            return len(pdf.pages)
+
+    try:
+        page_count = await run_in_threadpool(save_and_validate)
     except Exception:
-        os.remove(file_path)
+        if os.path.exists(file_path):
+            os.remove(file_path)
         raise HTTPException(status_code=400, detail="Could not read PDF file")
 
     return {
