@@ -1,6 +1,10 @@
 from fastapi import FastAPI
 from api.upload import router as upload_router
 from api.ask import router as ask_router
+from db.connection import engine, Base
+from db import models
+
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="AI Knowledge System",
