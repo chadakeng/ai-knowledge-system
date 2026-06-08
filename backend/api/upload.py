@@ -1,7 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from starlette.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
-from db.connection import get_db
+from db.connections import get_db
 from db.models import Document
 import pdfplumber
 import os

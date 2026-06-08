@@ -1,8 +1,14 @@
 from fastapi import FastAPI
 from api.upload import router as upload_router
 from api.ask import router as ask_router
-from db.connection import engine, Base
+from db.connections import engine, Base
 from db import models
+from sqlalchemy import text
+
+# enable pgvector extension before creating tables
+with engine.connect() as conn:
+    conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+    conn.commit()
 
 Base.metadata.create_all(bind=engine)
 

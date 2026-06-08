@@ -1,29 +1,38 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
+from db.connections import get_db
+from db.models import Document
+from rag.retriever import retrieve_and_answer
 
 router = APIRouter()
 
 class AskRequest(BaseModel):
     question: str
-    filename: str  # which document to query against
+    document_id: int
 
 class AskResponse(BaseModel):
     question: str
     answer: str
-    filename: str
+    document_id: int
 
 @router.post("/ask", response_model=AskResponse)
-async def ask_question(request: AskRequest):
+async def ask_question(request: AskRequest, db: Session = Depends(get_db)):
 
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
-    if not request.filename.endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Invalid filename")
+    document = db.query(Document).filter(
+        Document.id == request.document_id
+    ).first()
 
-    # placeholder — real RAG answer replaces this in Phase 3
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    answer = retrieve_and_answer(request.question, request.document_id, db)
+
     return AskResponse(
         question=request.question,
-        answer="RAG pipeline not connected yet — coming in Phase 3",
-        filename=request.filename
+        answer=answer,
+        document_id=request.document_id
     )

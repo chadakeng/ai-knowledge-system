@@ -6,3 +6,7 @@ asyncpg
 sqlalchemy
 psycopg2-binary
 python-dotenv
+langchain
+langchain-community
+langchain-ollama
+pgvector
