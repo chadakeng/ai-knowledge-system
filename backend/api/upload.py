@@ -2,7 +2,10 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from starlette.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 from db.connections import get_db
-from db.models import Document
+from db.models import Document, Chunk
+from rag.extractor import extract_text_from_pdf
+from rag.chunker import chunk_text
+from rag.embedder import embed_chunks
 import pdfplumber
 import os
 
@@ -40,18 +43,47 @@ async def upload_document(
             os.remove(file_path)
         raise HTTPException(status_code=400, detail="Could not read PDF file")
 
-    # save record to database
-    document = Document(
-        filename=file.filename,
-        page_count=page_count
-    )
+    # save document record to database
+    document = Document(filename=file.filename, page_count=page_count)
     db.add(document)
     db.commit()
     db.refresh(document)
 
+    # run full ingestion pipeline
+    try:
+        def ingest():
+            # extract text from PDF
+            text = extract_text_from_pdf(file.filename)
+
+            # split into chunks
+            chunks = chunk_text(text)
+
+            # embed all chunks via Ollama
+            embeddings = embed_chunks(chunks)
+
+            # save chunks + vectors to database
+            for chunk_content, embedding in zip(chunks, embeddings):
+                chunk = Chunk(
+                    document_id=document.id,
+                    content=chunk_content,
+                    embedding=embedding
+                )
+                db.add(chunk)
+            db.commit()
+            return len(chunks)
+
+        chunk_count = await run_in_threadpool(ingest)
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"File saved but ingestion failed: {str(e)}"
+        )
+
     return {
-        "message": "File uploaded successfully",
+        "message": "File uploaded and processed successfully",
         "document_id": document.id,
         "filename": document.filename,
-        "pages": document.page_count
+        "pages": document.page_count,
+        "chunks_created": chunk_count
     }
